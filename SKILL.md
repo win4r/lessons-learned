@@ -8,11 +8,22 @@ allowed-tools:
   - Edit
   - Glob
   - Grep
+  - Bash(git log*)
+  - Bash(echo *)
 ---
 
 # /lessons-learned — Capture & Save Lessons from Current Work
 
 When this skill is invoked, perform the following steps:
+
+## Step 0: Parse arguments
+
+`$ARGUMENTS` may contain:
+
+- **`save`** — skip confirmation, save immediately
+- **A topic string** (e.g. `telegram setup`) — filter lessons to that topic only
+- **Both** (e.g. `save telegram`) — filter + auto-save
+- **Empty** — review everything, ask before saving
 
 ## Step 1: Review the conversation
 
@@ -25,6 +36,8 @@ Look back through the entire current conversation and identify:
 - **Gotchas & pitfalls** — traps that could catch you again in a future session
 - **Useful commands, paths, or configurations** — concrete details worth remembering
 
+Optionally run `git log --oneline -20` to add context about what changed on disk.
+
 Ignore trivial or obvious things. Focus on knowledge that would save time if this task came up again.
 
 ## Step 2: Present a summary to the user
@@ -33,17 +46,29 @@ Output a concise, numbered list of lessons learned. For each lesson:
 - State the lesson clearly in one sentence
 - Add a brief "why" or context line
 
-Ask the user: **"Should I save all of these to memory, or would you like to adjust?"**
+Unless `save` was passed in arguments, ask: **"Should I save all of these to memory, or would you like to adjust?"**
 
-If the user has provided arguments (`$ARGUMENTS`), treat them as additional context or a topic filter for which lessons to focus on.
+## Step 3: Resolve memory path
 
-## Step 3: Save to memory
+The memory directory is project-scoped. Determine the correct path dynamically:
 
-After user confirmation (or immediately if the user's intent is clear):
+```
+~/.claude/projects/-<sanitized-cwd>/memory/
+```
 
-1. **Read** `~/.claude/projects/-Users-charlesqin/memory/MEMORY.md` to check for existing related memories
-2. **Decide**: update an existing memory file if the topic overlaps, or create a new one
-3. **Write** the memory file to `~/.claude/projects/-Users-charlesqin/memory/` using this format:
+Where `<sanitized-cwd>` is the current working directory with `/` replaced by `-`. For example:
+- cwd `/Users/charlesqin` → `~/.claude/projects/-Users-charlesqin/memory/`
+- cwd `/Users/charlesqin/myproject` → `~/.claude/projects/-Users-charlesqin-myproject/memory/`
+
+Use `Glob` to find the actual `MEMORY.md` path if unsure: `~/.claude/projects/*/memory/MEMORY.md`
+
+## Step 4: Dedup and save
+
+1. **Read** `MEMORY.md` index to check for existing related memories
+2. **Dedup check**: For each candidate lesson, search existing memory files for overlapping content:
+   - If an existing file covers the same topic, **read it** and **append or merge** the new lessons into it (use Edit, not Write) — avoid duplicating what's already there
+   - If no overlap exists, **create a new file**
+3. **Write** new memory files using this format:
 
 ```markdown
 ---
@@ -61,11 +86,11 @@ type: feedback OR project
 2. ...
 ```
 
-4. **Update** `MEMORY.md` index with a pointer to the new/updated file
+4. **Update** `MEMORY.md` index — add pointers for new files, leave existing entries unchanged
 
 ## Rules
 
-- Do NOT save things that are already in existing memories (check first)
+- Do NOT save things that are already in existing memories (check first, merge if overlapping)
 - Do NOT save things derivable from code or docs — only non-obvious knowledge
 - Keep lessons actionable and specific, not generic advice
 - Use the `feedback` type for workflow/approach lessons, `project` type for project-specific facts
